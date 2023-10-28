@@ -1,0 +1,6 @@
+bokeh==3.3.0
+matplotlib==3.6.3
+networkx==3.0
+pandas==1.5.3
+Requests==2.31.0
+tqdm==4.64.1
