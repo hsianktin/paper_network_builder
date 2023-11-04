@@ -13,7 +13,7 @@ args = parser.parse_args()
 query = args.query
 
 def search_semantic_scholar(query):
-    result_limit = 50
+    result_limit = 40
     rsp = requests.get('https://api.semanticscholar.org/graph/v1/paper/search',
                         params={'query': query, 'limit': result_limit, 'fields': 'title,externalIds,year'})
     rsp.raise_for_status()
@@ -122,7 +122,7 @@ for i in tqdm.tqdm(range(0,len(paper_network.nodes))):
     df_cited_papers = get_reference(paper_id)
     if len(df_cited_papers.keys()) <= 1:
         continue
-    for j in range(0,len(df_citing_papers)):
+    for j in range(0,len(df_cited_papers)):
         paper_cited = df_cited_papers['paperId'][j]
         # if paper_citing is already in the paper_network, add an edge
         if paper_network.has_node(paper_cited):
@@ -140,6 +140,15 @@ for node in node_in_degree:
     if node_in_degree[node] == 1 and node not in df['paperId']:
         paper_network.remove_node(node)
 
+# if number of nodes > 1000 delete nodes with lowest total degrees
+
+# save the paper network
+nx.write_gexf(paper_network,"data/"+query+".gexf")
+while len(paper_network.nodes) > 1000:
+    node_degree = dict(paper_network.degree)
+    node_degree_sorted = sorted(node_degree.items(), key=lambda x: x[1])
+    paper_network.remove_node(node_degree_sorted[0][0])
+
 from bokeh.io import output_file,output_notebook, show, save
 from bokeh.models import Range1d, Circle, ColumnDataSource, MultiLine, NodesAndLinkedEdges, EdgesAndLinkedNodes, LabelSet, HoverTool, TapTool, OpenURL, BoxSelectTool
 from bokeh.plotting import figure
@@ -149,10 +158,11 @@ from bokeh.transform import linear_cmap
 mapping = dict((n, i) for i, n in enumerate(paper_network.nodes))
 H = nx.relabel_nodes(paper_network, mapping)
 
-
+width = 800
+height = 800
 #Choose a title!
 title = 'Paper network of ' + query
-output_file(query+".html")
+output_file("data/"+query+".html")
 # process the network
 cited_by = dict(H.in_degree)
 nx.set_node_attributes(H,name='cited_by',values=cited_by)
@@ -167,7 +177,8 @@ color_palette = Blues8
 
 #Create a plot — set dimensions, toolbar, and title
 plot = figure(tools="pan,wheel_zoom,save,reset", active_scroll='wheel_zoom',
-            x_range=Range1d(-10.1, 10.1), y_range=Range1d(-10.1, 10.1), title=title)
+            x_range=Range1d(-10.1, 10.1), y_range=Range1d(-10.1, 10.1), 
+            title=title, width=width, height=height)
 
 plot.add_tools(HoverTool(tooltips = HOVER_TOOLTIPS), TapTool(), BoxSelectTool())
 #Create a network graph object with spring layout
@@ -211,4 +222,69 @@ plot.renderers.append(graph_renderer)
 # plot.renderers.append(label)
 show(plot)
 save(plot,"data/"+query+".html")
+
+width = 800
+height = 800
+#Choose a title!
+title = 'Paper network of ' + query
+output_file("data/"+query+"_cited_by.html")
+# process the network
+cited_by = dict(H.in_degree)
+nx.set_node_attributes(H,name='cited_by',values=cited_by)
+degrees = dict(H.degree)
+nx.set_node_attributes(H,name='degree',values=degrees)
+size_by_this_attribute = 'cited_by'
+color_by_this_attribute = 'time_stamp'
+
+#Establish which categories will appear when hovering over each node
+HOVER_TOOLTIPS = [("Paper", "@label"),("Cited-by Counts","@cited_by"),("Date","@date")]
+color_palette = Blues8
+
+#Create a plot — set dimensions, toolbar, and title
+plot = figure(tools="pan,wheel_zoom,save,reset", active_scroll='wheel_zoom',
+            x_range=Range1d(-10.1, 10.1), y_range=Range1d(-10.1, 10.1), 
+            title=title, width=width, height=height)
+
+plot.add_tools(HoverTool(tooltips = HOVER_TOOLTIPS), TapTool(), BoxSelectTool())
+#Create a network graph object with spring layout
+# https://networkx.github.io/documentation/networkx-1.9/reference/generated/networkx.drawing.layout.spring_layout.html
+graph_renderer = from_networkx(H, nx.kamada_kawai_layout, scale=10, center=(0, 0))
+
+#Set node size and color
+minimum_value_color = min(graph_renderer.node_renderer.data_source.data[color_by_this_attribute])
+maximum_value_color = max(graph_renderer.node_renderer.data_source.data[color_by_this_attribute])
+graph_renderer.node_renderer.glyph = Circle(size=size_by_this_attribute, fill_color=linear_cmap(color_by_this_attribute, color_palette, minimum_value_color, maximum_value_color))
+graph_renderer.node_renderer.selection_glyph = Circle(size=size_by_this_attribute, fill_color=Oranges8[2])
+graph_renderer.node_renderer.hover_glyph = Circle(size=size_by_this_attribute, fill_color=Oranges8[1])
+
+#Set edge opacity and width
+graph_renderer.edge_renderer.glyph = MultiLine(line_alpha=0.5, line_width=1)
+graph_renderer.edge_renderer.selection_glyph = MultiLine(line_alpha=0.5, line_width=5, line_color=Oranges8[2])
+graph_renderer.edge_renderer.hover_glyph = MultiLine(line_alpha=0.5, line_width=5, line_color=Oranges8[1])
+
+
+graph_renderer.selection_policy = NodesAndLinkedEdges()
+graph_renderer.inspection_policy = NodesAndLinkedEdges()
+
+
+# labels
+pos = graph_renderer.layout_provider.graph_layout
+x,y=zip(*pos.values())
+graph_renderer.node_renderer.data_source.data['x']=x
+graph_renderer.node_renderer.data_source.data['y']=y
+label=LabelSet(x='x', y='y', text='label',level='glyph', source=graph_renderer.node_renderer.data_source)
+
+
+# url by doi
+url = "https://doi.org/@doi"
+tap_tool = plot.select(type = TapTool)
+tap_tool.callback = OpenURL(url=url)
+
+
+#Add network graph to the plot
+
+plot.renderers.append(graph_renderer)
+# plot.renderers.append(label)
+show(plot)
+save(plot,"data/"+query+"_cited_by.html")
 
