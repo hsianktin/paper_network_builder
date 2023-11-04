@@ -9,7 +9,7 @@ For an interactive example, see [here](fig/catch%20bond%20mechanism%20TCR_cited_
 ## Usage
 First clone the repository
 ```bash
-git clone
+git clone https://github.com/hsianktin/paper_network_builder.git
 ```
 Then create a virtual environment
 ```bash
