@@ -15,6 +15,15 @@ Then create a virtual environment
 ```bash
 python -m venv venv
 ```
+Activate the virtual environment (after creating it, you need to activate it every time you want to run the app)
+```bash
+# On Windows
+venv\Scripts\activate
+# On Unix or MacOS
+# bash
+source venv/bin/activate
+```
+
 To install the dependencies, run
 ```bash
 pip install -r requirements.txt
@@ -24,3 +33,10 @@ Then you can run the app with
 python scholarly_search.py query
 ```
 where `query` is the keywords you want to search for.
+
+The app will then create a network of papers that cite each other and save it as an HTML file in the `fig` folder, also a gexf file in the `data` folder. The network can be further analyzed with [Gephi](https://gephi.org/) using the gexf file.
+
+To deactivate the virtual environment, run
+```bash
+deactivate
+```
