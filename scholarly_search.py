@@ -12,11 +12,27 @@ parser.add_argument("query", help="the query to search")
 args = parser.parse_args()
 query = args.query
 
+
+import os
+if not os.path.exists("data"):
+    os.makedirs("data")
+
+
 def search_semantic_scholar(query):
-    result_limit = 40
-    rsp = requests.get('https://api.semanticscholar.org/graph/v1/paper/search',
-                        params={'query': query, 'limit': result_limit, 'fields': 'title,externalIds,year'})
-    rsp.raise_for_status()
+    while True:
+        try:
+            rsp = requests.get('https://api.semanticscholar.org/graph/v1/paper/search',
+                                params={'query': query, 'limit': 1, 'fields': 'title,externalIds,year'})
+            rsp.raise_for_status()
+            break
+        except Exception as e:
+            print(e)
+            print("waiting for 10 seconds")
+            time.sleep(10)
+    # result_limit = 40
+    # rsp = requests.get('https://api.semanticscholar.org/graph/v1/paper/search',
+    #                     params={'query': query, 'limit': result_limit, 'fields': 'title,externalIds,year'})
+    # rsp.raise_for_status()
     results = rsp.json()
     total = results["total"]
     data = results["data"]
@@ -86,20 +102,28 @@ def get_reference(paper_id):
     return df_cited_papers
 
 df = search_semantic_scholar(query)
-
+success_index = []
 lists_cited_paper = []
+
+
+
 for i in range(0,len(df)):
-    lists_cited_paper.append(get_reference(df['paperId'][i]))
-    time.sleep(0.1)
+    try:
+        lists_cited_paper.append(get_reference(df['paperId'][i]))
+        success_index.append(i)
+    except Exception as e:
+        print(e)
+    print("waiting for 10 seconds")
+    time.sleep(10)
 
 paper_network = nx.DiGraph()
 # initialize the paper network
-for i in range(0,len(df)):
+for i in success_index:
     if df['paperId'][i] is not None:
         paper_network.add_node(df['paperId'][i],label=df['title'][i],date=str(df['year'][i]),time_stamp = df['year'][i], doi=df['DOI'][i])
 
 # build the paper network by investigating the references of each paper using lists_cited_paper
-for i in range(0,len(df)):
+for i in success_index:
     df_cited_papers = lists_cited_paper[i]
     paper_citing = df['paperId'][i]
     for j in range(0,len(df_cited_papers)):
@@ -114,24 +138,27 @@ for i in range(0,len(df)):
 import tqdm
 print("extending the paper network by investigating the additional references of each paper")
 for i in tqdm.tqdm(range(0,len(paper_network.nodes))):
-    paper_id = list(paper_network.nodes)[i]
-    paper_citing = paper_id
-    # skip the following if paper_id is None or is present in df
-    if paper_id is None or paper_id in df['paperId']:
-        continue
-    df_cited_papers = get_reference(paper_id)
-    if len(df_cited_papers.keys()) <= 1:
-        continue
-    for j in range(0,len(df_cited_papers)):
-        paper_cited = df_cited_papers['paperId'][j]
-        # if paper_citing is already in the paper_network, add an edge
-        if paper_network.has_node(paper_cited):
-            paper_network.add_edge(paper_citing,paper_cited)
-        else:
-            if paper_cited is not None:
-                paper_network.add_node(paper_cited,label=df_cited_papers['title'][j],date=str(df_cited_papers['year'][j]),time_stamp = df_cited_papers['year'][j], doi=df_cited_papers['DOI'][j])
+    try:
+        paper_id = list(paper_network.nodes)[i]
+        paper_citing = paper_id
+        # skip the following if paper_id is None or is present in df
+        if paper_id is None or paper_id in df['paperId']:
+            continue
+        df_cited_papers = get_reference(paper_id)
+        if len(df_cited_papers.keys()) <= 1:
+            continue
+        for j in range(0,len(df_cited_papers)):
+            paper_cited = df_cited_papers['paperId'][j]
+            # if paper_citing is already in the paper_network, add an edge
+            if paper_network.has_node(paper_cited):
                 paper_network.add_edge(paper_citing,paper_cited)
-    time.sleep(0.5)
+            else:
+                if paper_cited is not None:
+                    paper_network.add_node(paper_cited,label=df_cited_papers['title'][j],date=str(df_cited_papers['year'][j]),time_stamp = df_cited_papers['year'][j], doi=df_cited_papers['DOI'][j])
+                    paper_network.add_edge(paper_citing,paper_cited)
+    except Exception as e:
+        print(e)
+    time.sleep(10)
 
 # remove quasi-isolated nodes (nodes with only one edge)
 node_in_degree = dict(paper_network.in_degree)
@@ -183,7 +210,7 @@ plot = figure(tools="pan,wheel_zoom,save,reset", active_scroll='wheel_zoom',
 plot.add_tools(HoverTool(tooltips = HOVER_TOOLTIPS), TapTool(), BoxSelectTool())
 #Create a network graph object with spring layout
 # https://networkx.github.io/documentation/networkx-1.9/reference/generated/networkx.drawing.layout.spring_layout.html
-graph_renderer = from_networkx(H, nx.kamada_kawai_layout, scale=10, center=(0, 0))
+graph_renderer = from_networkx(H, nx.spectral_layout, scale=10, center=(0, 0))
 
 #Set node size and color
 minimum_value_color = min(graph_renderer.node_renderer.data_source.data[color_by_this_attribute])
